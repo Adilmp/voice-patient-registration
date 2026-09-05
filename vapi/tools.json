@@ -1,0 +1,94 @@
+{
+  "_comment": "Paste each object in this array as a separate Tool in the Vapi dashboard (Tools > Create Tool > Function), or POST it to https://api.vapi.ai/tool. Replace BASE_URL with this backend's public URL once deployed (e.g. https://your-app.up.railway.app).",
+
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "lookup_patient_by_phone",
+        "description": "Check whether a patient already exists in the system by phone number. Call this as soon as the caller gives their phone number, before collecting any other information, so you can detect a returning caller.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "phone_number": {
+              "type": "string",
+              "description": "The caller's 10-digit U.S. phone number, digits only or with punctuation."
+            }
+          },
+          "required": ["phone_number"]
+        }
+      },
+      "server": {
+        "url": "BASE_URL/vapi/tool-calls"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "register_patient",
+        "description": "Create a new patient record. Only call this AFTER you have read back every collected field to the caller and they have explicitly confirmed it is correct. If this returns success=false with error='duplicate_phone', tell the caller a record already exists for that phone number and ask if they'd like to update it instead (then use update_patient).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "first_name": { "type": "string", "description": "Patient's first name" },
+            "last_name": { "type": "string", "description": "Patient's last name" },
+            "date_of_birth": { "type": "string", "description": "Date of birth in MM/DD/YYYY format" },
+            "sex": { "type": "string", "description": "One of: Male, Female, Other, Decline to Answer" },
+            "phone_number": { "type": "string", "description": "10-digit U.S. phone number" },
+            "email": { "type": "string", "description": "Email address (optional)" },
+            "address_line_1": { "type": "string", "description": "Street address" },
+            "address_line_2": { "type": "string", "description": "Apt/Suite/Unit (optional)" },
+            "city": { "type": "string", "description": "City" },
+            "state": { "type": "string", "description": "2-letter U.S. state abbreviation" },
+            "zip_code": { "type": "string", "description": "5-digit or ZIP+4 U.S. zip code" },
+            "insurance_provider": { "type": "string", "description": "Insurance company name (optional)" },
+            "insurance_member_id": { "type": "string", "description": "Insurance member/subscriber ID (optional)" },
+            "preferred_language": { "type": "string", "description": "Preferred language, defaults to English (optional)" },
+            "emergency_contact_name": { "type": "string", "description": "Emergency contact full name (optional)" },
+            "emergency_contact_phone": { "type": "string", "description": "Emergency contact 10-digit phone number (optional)" }
+          },
+          "required": [
+            "first_name", "last_name", "date_of_birth", "sex", "phone_number",
+            "address_line_1", "city", "state", "zip_code"
+          ]
+        }
+      },
+      "server": {
+        "url": "BASE_URL/vapi/tool-calls"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "update_patient",
+        "description": "Update an existing patient record, identified by patient_id (obtained from lookup_patient_by_phone). Only include fields the caller actually wants to change. Call this only after reading back the changes and getting explicit confirmation.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "patient_id": { "type": "string", "description": "The existing patient's unique ID, from lookup_patient_by_phone" },
+            "first_name": { "type": "string" },
+            "last_name": { "type": "string" },
+            "date_of_birth": { "type": "string", "description": "MM/DD/YYYY" },
+            "sex": { "type": "string" },
+            "phone_number": { "type": "string" },
+            "email": { "type": "string" },
+            "address_line_1": { "type": "string" },
+            "address_line_2": { "type": "string" },
+            "city": { "type": "string" },
+            "state": { "type": "string" },
+            "zip_code": { "type": "string" },
+            "insurance_provider": { "type": "string" },
+            "insurance_member_id": { "type": "string" },
+            "preferred_language": { "type": "string" },
+            "emergency_contact_name": { "type": "string" },
+            "emergency_contact_phone": { "type": "string" }
+          },
+          "required": ["patient_id"]
+        }
+      },
+      "server": {
+        "url": "BASE_URL/vapi/tool-calls"
+      }
+    }
+  ]
+}
