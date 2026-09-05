@@ -57,6 +57,14 @@ def test_create_patient_sex_case_insensitive(client):
     assert resp.json()["data"]["sex"] == "Decline to Answer"  # normalized to canonical casing
 
 
+def test_create_patient_full_state_name_accepted(client):
+    """Regression: the LLM says "Texas," not "TX" -- must normalize, not reject."""
+    patient = {**VALID_PATIENT, "state": "Texas", "phone_number": "2125550161"}
+    resp = client.post("/patients", json=patient)
+    assert resp.status_code == 201
+    assert resp.json()["data"]["state"] == "TX"
+
+
 def test_get_patient_by_id(client):
     created = client.post("/patients", json=VALID_PATIENT).json()["data"]
     resp = client.get(f"/patients/{created['patient_id']}")

@@ -4,7 +4,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 
-from app.constants import SEX_VALUES, US_STATE_CODES
+from app.constants import SEX_VALUES, US_STATE_CODES, US_STATE_NAME_TO_CODE
 
 NAME_RE = re.compile(r"^[A-Za-z'-]{1,50}$")
 ZIP_RE = re.compile(r"^\d{5}(-\d{4})?$")
@@ -57,10 +57,13 @@ def validate_city(value: str) -> str:
 
 
 def validate_state(value: str) -> str:
-    value = value.upper()
-    if value not in US_STATE_CODES:
-        raise ValueError("state must be a valid 2-letter U.S. state abbreviation")
-    return value
+    code = value.strip().upper()
+    if code in US_STATE_CODES:
+        return code
+    full_name_code = US_STATE_NAME_TO_CODE.get(value.strip().lower())
+    if full_name_code:
+        return full_name_code
+    raise ValueError("state must be a valid 2-letter U.S. state abbreviation")
 
 
 def validate_zip(value: str) -> str:
