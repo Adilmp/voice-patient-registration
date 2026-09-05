@@ -93,6 +93,13 @@ class PatientBase(BaseModel):
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
 
+    @field_validator("email", mode="before")
+    @classmethod
+    def _blank_email_to_none(cls, v):
+        # Vapi's LLM sometimes sends "" instead of omitting an optional field
+        # the caller never provided a value for -- treat that as "no email".
+        return v or None
+
     @field_validator("first_name", "last_name")
     @classmethod
     def _check_name(cls, v):
@@ -167,6 +174,11 @@ class PatientUpdate(BaseModel):
     preferred_language: Optional[str] = None
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _blank_email_to_none(cls, v):
+        return v or None
 
     @field_validator("first_name", "last_name")
     @classmethod

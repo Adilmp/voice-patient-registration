@@ -19,6 +19,15 @@ def test_create_patient_valid(client):
     assert body["data"]["patient_id"]
 
 
+def test_create_patient_empty_string_email_treated_as_none(client):
+    """Regression: Vapi's LLM sends "" for an optional field the caller never
+    gave a value for, instead of omitting it -- this must not be rejected."""
+    patient = {**VALID_PATIENT, "email": "", "phone_number": "2125550150"}
+    resp = client.post("/patients", json=patient)
+    assert resp.status_code == 201
+    assert resp.json()["data"]["email"] is None
+
+
 def test_create_patient_future_dob_rejected(client):
     bad = {**VALID_PATIENT, "date_of_birth": "01/01/2099", "phone_number": "2125550101"}
     resp = client.post("/patients", json=bad)
