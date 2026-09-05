@@ -1,21 +1,23 @@
-"""Adapter between Vapi's tool-calling webhook contract and our patient service layer.
+"""Single webhook that speaks Vapi's server-message contract.
 
-Vapi POSTs here whenever the voice assistant decides to call one of its
-configured tools (see vapi/tools.json). This module speaks Vapi's request/
-response shape on the outside, but underneath it calls the exact same
+Vapi is configured to POST every server message -- both tool-calls and the
+end-of-call-report -- to one "Server URL" per assistant. We branch on
+message.type here rather than using separate endpoints, matching how Vapi
+actually calls out. Underneath, everything goes through the exact same
 crud.py functions the REST API uses -- there is only one place that knows
 how to read, write, or validate a patient record.
 """
 
+import json
 import logging
 import re
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app import crud
-from app.database import SessionLocal
+from app.database import get_db
 from app.errors import format_pydantic_errors
 from app.schemas import PatientCreate, PatientOut, PatientUpdate
 
@@ -80,31 +82,86 @@ TOOL_HANDLERS = {
 }
 
 
-@router.post("/vapi/tool-calls")
-async def handle_tool_calls(request: Request):
-    body = await request.json()
-    tool_calls = body.get("message", {}).get("toolCallList", [])
-
+def _handle_tool_calls(db: Session, message: dict) -> dict:
+    tool_calls = message.get("toolCallList", [])
     results = []
-    db = SessionLocal()
-    try:
-        for call in tool_calls:
-            call_id = call.get("id")
-            name = call.get("name")
-            args = call.get("arguments") or {}
+    for call in tool_calls:
+        call_id = call.get("id")
+        name = call.get("name")
+        args = call.get("arguments") or {}
 
-            handler = TOOL_HANDLERS.get(name)
-            if handler is None:
-                result = {"success": False, "error": f"Unknown tool: {name}"}
-            else:
-                try:
-                    result = handler(db, args)
-                except Exception:
-                    logger.exception("Error handling Vapi tool call '%s'", name)
-                    result = {"success": False, "error": "Internal error while processing this request"}
+        handler = TOOL_HANDLERS.get(name)
+        if handler is None:
+            result = {"success": False, "error": f"Unknown tool: {name}"}
+        else:
+            try:
+                result = handler(db, args)
+            except Exception:
+                logger.exception("Error handling Vapi tool call '%s'", name)
+                result = {"success": False, "error": "Internal error while processing this request"}
 
-            results.append({"toolCallId": call_id, "result": result})
-    finally:
-        db.close()
+        results.append({"toolCallId": call_id, "result": result})
 
     return {"results": results}
+
+
+def _extract_transcript_fields(message: dict) -> dict:
+    """Best-effort extraction -- Vapi's exact payload shape has shifted across
+    versions, so every lookup here is defensive and the raw payload is always
+    kept as a fallback so a call is never silently lost."""
+    call = message.get("call") or {}
+    artifact = message.get("artifact") or {}
+    customer = call.get("customer") or {}
+
+    phone_raw = customer.get("number") or call.get("phoneNumber") or ""
+    phone = re.sub(r"\D", "", phone_raw)[-10:] or None
+
+    transcript = artifact.get("transcript")
+    if not transcript and artifact.get("messages"):
+        transcript = "\n".join(
+            f"{m.get('role', '?')}: {m.get('message', '')}" for m in artifact["messages"]
+        )
+
+    return {
+        "call_id": call.get("id"),
+        "phone_number": phone,
+        "transcript": transcript,
+        "ended_reason": message.get("endedReason"),
+    }
+
+
+def _handle_end_of_call_report(db: Session, message: dict) -> dict:
+    fields = _extract_transcript_fields(message)
+
+    patient_id = None
+    if fields["phone_number"]:
+        patient = crud.get_patient_by_phone(db, fields["phone_number"])
+        if patient:
+            patient_id = patient.patient_id
+
+    row = crud.create_call_transcript(
+        db,
+        patient_id=patient_id,
+        raw_payload=json.dumps(message)[:20000],  # cap size defensively
+        **fields,
+    )
+    logger.info(
+        "CALL_TRANSCRIPT_SAVED call_id=%s patient_id=%s", row.call_id, row.patient_id
+    )
+    return {"stored": True, "transcript_id": row.id, "linked_patient_id": patient_id}
+
+
+@router.post("/vapi/webhook")
+async def handle_vapi_webhook(request: Request, db: Session = Depends(get_db)):
+    body = await request.json()
+    message = body.get("message", {})
+    message_type = message.get("type")
+
+    if message_type == "tool-calls":
+        return _handle_tool_calls(db, message)
+    if message_type == "end-of-call-report":
+        return _handle_end_of_call_report(db, message)
+
+    # Vapi sends several other lifecycle message types (status-update,
+    # transcript, etc.) that we don't act on -- ack quietly rather than error.
+    return {"ignored": message_type}

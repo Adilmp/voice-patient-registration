@@ -19,7 +19,7 @@
         }
       },
       "server": {
-        "url": "BASE_URL/vapi/tool-calls"
+        "url": "BASE_URL/vapi/webhook"
       }
     },
     {
@@ -54,7 +54,7 @@
         }
       },
       "server": {
-        "url": "BASE_URL/vapi/tool-calls"
+        "url": "BASE_URL/vapi/webhook"
       }
     },
     {
@@ -87,7 +87,7 @@
         }
       },
       "server": {
-        "url": "BASE_URL/vapi/tool-calls"
+        "url": "BASE_URL/vapi/webhook"
       }
     }
   ]

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import CheckConstraint, Column, Date, DateTime, String
+from sqlalchemy import CheckConstraint, Column, Date, DateTime, String, Text
 
 from app.constants import SEX_VALUES
 from app.database import Base
@@ -46,3 +46,22 @@ class Patient(Base):
     __table_args__ = (
         CheckConstraint(f"sex IN {SEX_VALUES}", name="ck_patients_sex_valid"),
     )
+
+
+class CallTranscript(Base):
+    """A record of one phone call, linked to a patient when we can match one by phone number.
+
+    patient_id is nullable on purpose: a call can end (e.g. caller hangs up
+    early) before any patient record exists to link it to.
+    """
+
+    __tablename__ = "call_transcripts"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    patient_id = Column(String(36), nullable=True, index=True)
+    call_id = Column(String(255), nullable=True)
+    phone_number = Column(String(10), nullable=True, index=True)
+    transcript = Column(Text, nullable=True)
+    ended_reason = Column(String(100), nullable=True)
+    raw_payload = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)

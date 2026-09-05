@@ -4,14 +4,14 @@ from datetime import date
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session
 
 from app import crud
 from app.database import Base, SessionLocal, engine, get_db
 from app.errors import format_pydantic_errors
 from app.models import Patient
-from app.schemas import PatientCreate, PatientOut, PatientUpdate
+from app.schemas import CallTranscriptOut, PatientCreate, PatientOut, PatientUpdate
 from app.vapi_webhook import router as vapi_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -91,6 +91,14 @@ def health():
     return envelope(data={"status": "ok", "service": "patient-registration-api"})
 
 
+_STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+
+
+@app.get("/dashboard")
+def dashboard():
+    return FileResponse(os.path.join(_STATIC_DIR, "dashboard.html"))
+
+
 @app.get("/patients")
 def list_patients(
     last_name: str | None = None,
@@ -136,3 +144,13 @@ def delete_patient(patient_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Patient not found")
     logger.info("PATIENT_DELETED %s", patient_id)
     return envelope(data={"patient_id": patient_id, "deleted_at": patient.deleted_at.isoformat()})
+
+
+@app.get("/patients/{patient_id}/transcripts")
+def list_patient_transcripts(patient_id: str, db: Session = Depends(get_db)):
+    """Bonus: call transcripts linked to this patient (see app/vapi_webhook.py)."""
+    if crud.get_patient(db, patient_id) is None:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    rows = crud.list_transcripts_for_patient(db, patient_id)
+    data = [CallTranscriptOut.model_validate(r).model_dump(mode="json") for r in rows]
+    return envelope(data=data)

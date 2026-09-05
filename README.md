@@ -12,9 +12,9 @@ Caller (phone)
      v
 Vapi Assistant  ---- system prompt (vapi/system_prompt.md)
  (telephony + speech-to-text + LLM + text-to-speech)
-     |  tool call, HTTPS webhook, only after Vapi decides to invoke a tool
+     |  every server message (tool calls + end-of-call report), one URL
      v
-POST /vapi/tool-calls  (app/vapi_webhook.py)
+POST /vapi/webhook  (app/vapi_webhook.py)
      |  same functions the REST API uses -- one source of truth
      v
 Service layer (app/crud.py)
@@ -47,17 +47,19 @@ how to validate and persist a patient record.
 
 ```
 app/
-  main.py          FastAPI app: the 5 REST endpoints, error handling, envelope, logging, seed data
-  vapi_webhook.py  Adapter: translates Vapi's tool-call webhook format into calls to crud.py
-  models.py        SQLAlchemy Patient table definition
+  main.py          FastAPI app: the 5 REST endpoints + transcripts endpoint, error handling, envelope, logging, seed data
+  vapi_webhook.py  Adapter: handles Vapi's tool-calls and end-of-call-report messages via crud.py
+  models.py        SQLAlchemy tables: Patient, CallTranscript
   schemas.py       Pydantic request/response validation (names, phone, DOB, state, zip, etc.)
   crud.py          Service layer: the only code that reads/writes the database
-  database.py      SQLite engine/session setup, .env loading
+  database.py      SQLite/Postgres engine/session setup, .env loading
   errors.py        Shared validation-error message formatting
   constants.py     US state codes, valid `sex` values
+  static/dashboard.html  Bonus: dependency-free dashboard UI, served at GET /dashboard
 vapi/
   system_prompt.md The voice agent's conversational instructions (paste into Vapi dashboard)
   tools.json       The 3 tool/function definitions the agent can call (paste into Vapi dashboard)
+tests/             pytest suite for the REST API and the Vapi webhook (bonus)
 ```
 
 ## Data model
@@ -93,14 +95,23 @@ curl -X POST https://<your-app>/patients -H "Content-Type: application/json" -d 
 }'
 ```
 
+Bonus: `GET /patients/:id/transcripts` -- call transcripts linked to a patient (see below).
+
 ## Voice agent integration
 
-`POST /vapi/tool-calls` is a single endpoint that Vapi calls whenever the
-assistant invokes one of three tools:
+`POST /vapi/webhook` is a single endpoint that handles every server message
+Vapi sends for this assistant, branching on `message.type`:
 
-- `lookup_patient_by_phone` -- checks for a returning caller by phone number
-- `register_patient` -- creates a new patient (after the agent reads back and confirms all fields)
-- `update_patient` -- updates an existing patient by `patient_id`
+- **`tool-calls`** -- the assistant invoking one of three tools:
+  - `lookup_patient_by_phone` -- checks for a returning caller by phone number
+  - `register_patient` -- creates a new patient (after the agent reads back and confirms all fields)
+  - `update_patient` -- updates an existing patient by `patient_id`
+- **`end-of-call-report`** (bonus) -- fired once when the call ends. We extract the transcript and try to match it to a patient by phone number, storing it either way (unmatched calls are kept with `patient_id = null` rather than dropped). Field extraction is defensive/best-effort since Vapi's payload shape has shifted across versions -- the full raw payload is always kept as a fallback so nothing is silently lost.
+- Anything else (`status-update`, etc.) is acknowledged and ignored.
+
+In the Vapi dashboard, this same URL goes in two places: as each tool's
+`server.url` (see `vapi/tools.json`) and as the assistant's own **Server URL**
+setting (so the end-of-call report reaches it too).
 
 The full conversational flow (greeting, field collection, corrections,
 confirmation, error re-prompting, optional-field opt-in, graceful closing)
@@ -158,15 +169,21 @@ is nothing telephony-related to hardcode or leak here.
 
 - **SQLite is for local development only.** The deployed instance should use Render's free managed Postgres (see Deployment) since local disk on Render's free web services isn't guaranteed to survive a redeploy -- and losing data between calls would fail this challenge's core "second call, no data loss" requirement.
 - **No authentication on the REST API** -- anyone with the URL can read/write patient records. Acceptable for a fake-data technical assessment; would need API keys or OAuth in production.
-- **No automated test suite** -- validated manually via curl against both the REST API and simulated Vapi webhook payloads (see conversation/commit history). Would add pytest coverage next.
 - **No rate limiting** on the API or the webhook.
-- **Multi-language, appointment scheduling, and call transcripts are not implemented** -- listed as bonus/stretch items in the challenge and out of scope for the core 3-hour build.
+- **Multi-language support and appointment scheduling are not implemented** -- listed as bonus/stretch items in the challenge and out of scope for the core 3-hour build.
+- **End-of-call transcript parsing is best-effort** -- Vapi's exact payload shape has shifted across versions, so field extraction (phone number, transcript) uses defensive lookups. The full raw payload is always stored too, so a mismatch loses convenience, not data.
 - **Render free-tier cold starts** can add latency to the very first tool call after idle time; mitigated optionally via UptimeRobot, not solved outright.
+
+## Bonus features implemented
+
+- **Automated tests** -- `tests/` (pytest): full REST API lifecycle, validation failures, soft delete, filters, and the Vapi webhook (all 3 tools + end-of-call report), each test isolated on its own temp SQLite file. Run with `pytest -q` (after `pip install -r requirements-dev.txt`).
+- **Dashboard** -- `GET /dashboard`: a dependency-free HTML/JS page listing patients from the live API, with last-name filtering and soft-delete.
+- **Call transcripts** -- see Voice agent integration above and `GET /patients/:id/transcripts`.
+- **Duplicate detection** -- `register_patient` refuses a second record for the same phone number and hands back the existing patient, independent of whether the agent remembered to call `lookup_patient_by_phone` first.
 
 ## Next steps (if continuing past the time limit)
 
-- Move to a persistent managed Postgres instance.
-- Add pytest integration tests for the API layer (bonus item).
-- Store a call transcript/summary linked to `patient_id` (bonus item).
 - Add basic API-key auth in front of `/patients`.
 - Multi-language support by detecting caller language in the system prompt and switching Vapi's voice/transcriber language.
+- Mock appointment-scheduling tool as a 4th Vapi function.
+- Surface transcripts in the dashboard UI (currently API-only).

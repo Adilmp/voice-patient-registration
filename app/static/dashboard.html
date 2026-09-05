@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Patient Registration Dashboard</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 1000px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
+  .sub { color: #888; margin-top: 0; margin-bottom: 1.5rem; font-size: 0.9rem; }
+  .controls { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+  input { padding: 0.4rem 0.6rem; flex: 1; }
+  button { padding: 0.4rem 0.8rem; cursor: pointer; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #444444; }
+  th { opacity: 0.7; font-weight: 600; }
+  .empty { text-align: center; opacity: 0.6; padding: 2rem; }
+  .danger { background: #c0392b; color: white; border: none; border-radius: 4px; }
+  .muted { opacity: 0.6; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+  <h1>Patient Registration Dashboard</h1>
+  <p class="sub">Read-only view over the same REST API the voice agent uses.</p>
+
+  <div class="controls">
+    <input id="filter" type="text" placeholder="Filter by last name..." />
+    <button id="refresh">Refresh</button>
+  </div>
+
+  <table id="table">
+    <thead>
+      <tr>
+        <th>Name</th><th>DOB</th><th>Sex</th><th>Phone</th><th>City, State</th>
+        <th>Registered</th><th></th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div id="empty" class="empty" hidden>No patients found.</div>
+
+  <script>
+    const rowsEl = document.getElementById('rows');
+    const emptyEl = document.getElementById('empty');
+    const filterEl = document.getElementById('filter');
+
+    async function load() {
+      const lastName = filterEl.value.trim();
+      const url = lastName ? `/patients?last_name=${encodeURIComponent(lastName)}` : '/patients';
+      const resp = await fetch(url);
+      const body = await resp.json();
+      render(body.data || []);
+    }
+
+    function render(patients) {
+      rowsEl.innerHTML = '';
+      emptyEl.hidden = patients.length > 0;
+      for (const p of patients) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${p.first_name} ${p.last_name}</td>
+          <td>${p.date_of_birth}</td>
+          <td>${p.sex}</td>
+          <td>${p.phone_number}</td>
+          <td>${p.city}, ${p.state}</td>
+          <td class="muted">${new Date(p.created_at).toLocaleString()}</td>
+          <td><button class="danger" data-id="${p.patient_id}">Delete</button></td>
+        `;
+        rowsEl.appendChild(tr);
+      }
+    }
+
+    rowsEl.addEventListener('click', async (e) => {
+      const id = e.target.dataset.id;
+      if (!id) return;
+      if (!confirm('Soft-delete this patient record?')) return;
+      await fetch(`/patients/${id}`, { method: 'DELETE' });
+      load();
+    });
+
+    document.getElementById('refresh').addEventListener('click', load);
+    filterEl.addEventListener('input', () => {
+      clearTimeout(window._t);
+      window._t = setTimeout(load, 250);
+    });
+
+    load();
+  </script>
+</body>
+</html>

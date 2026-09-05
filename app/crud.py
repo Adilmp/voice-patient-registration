@@ -3,7 +3,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.models import Patient
+from app.models import CallTranscript, Patient
 from app.schemas import PatientCreate, PatientUpdate
 
 
@@ -66,3 +66,20 @@ def soft_delete_patient(db: Session, patient_id: str) -> Optional[Patient]:
     db.commit()
     db.refresh(patient)
     return patient
+
+
+def create_call_transcript(db: Session, **fields) -> CallTranscript:
+    row = CallTranscript(**fields)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def list_transcripts_for_patient(db: Session, patient_id: str) -> list[CallTranscript]:
+    return (
+        db.query(CallTranscript)
+        .filter(CallTranscript.patient_id == patient_id)
+        .order_by(CallTranscript.created_at.desc())
+        .all()
+    )
