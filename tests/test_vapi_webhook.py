@@ -48,6 +48,25 @@ def test_register_invalid_dob_returns_field_specific_error(client):
     result = _result_of(resp)["result"]
     assert result["success"] is False
     assert "date_of_birth" in result["error"]
+    assert result["invalid_fields"] == [
+        {"field": "date_of_birth", "message": "Value error, date_of_birth cannot be in the future"}
+    ]
+
+
+def test_register_non_us_address_returns_all_invalid_fields(client):
+    """Regression: a non-U.S. address/phone (e.g. Karachi/Sindh/Pakistani
+    phone) must surface every bad field, not just fail generically."""
+    bad = {
+        **VALID_PATIENT,
+        "state": "Sindh",
+        "phone_number": "33",  # too short -- fails digit-count validation
+    }
+    resp = client.post("/vapi/webhook", json=_tool_call("register_patient", "c4b", bad))
+    result = _result_of(resp)["result"]
+    assert result["success"] is False
+    fields = {f["field"] for f in result["invalid_fields"]}
+    assert "state" in fields
+    assert "phone_number" in fields
 
 
 def test_register_duplicate_phone_offers_existing_patient(client):

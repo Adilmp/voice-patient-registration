@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app import crud
 from app.database import get_db
-from app.errors import format_pydantic_errors
+from app.errors import format_pydantic_errors, structured_pydantic_errors
 from app.schemas import PatientCreate, PatientOut, PatientUpdate
 
 logger = logging.getLogger("patient_registration")
@@ -42,7 +42,11 @@ def _register_patient(db: Session, args: dict) -> dict:
     try:
         patient_in = PatientCreate(**args)
     except ValidationError as exc:
-        return {"success": False, "error": format_pydantic_errors(exc)}
+        return {
+            "success": False,
+            "error": format_pydantic_errors(exc),
+            "invalid_fields": structured_pydantic_errors(exc),
+        }
 
     existing = crud.get_patient_by_phone(db, patient_in.phone_number)
     if existing is not None:
@@ -66,7 +70,11 @@ def _update_patient(db: Session, args: dict) -> dict:
     try:
         patient_in = PatientUpdate(**args)
     except ValidationError as exc:
-        return {"success": False, "error": format_pydantic_errors(exc)}
+        return {
+            "success": False,
+            "error": format_pydantic_errors(exc),
+            "invalid_fields": structured_pydantic_errors(exc),
+        }
 
     patient = crud.update_patient(db, patient_id, patient_in)
     if patient is None:
