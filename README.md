@@ -4,6 +4,17 @@ A phone number you can call to register as a patient by talking naturally,
 backed by a REST API and a persistent database. Built for the Voice AI
 Agent take-home challenge.
 
+## Live Demo
+
+- **Call to register:** +1 (346) 344-1391
+- **API base URL:** https://voice-patient-registration-jifg.onrender.com
+- **Dashboard:** https://voice-patient-registration-jifg.onrender.com/dashboard
+- No credentials needed to test the API (no auth layer -- see Known Limitations).
+- Note: the backend is on Render's free tier and may take up to ~30-60s to
+  respond to the very first request after a period of inactivity (cold
+  start). If a call seems to hang at the very beginning, that's why --
+  it will recover on its own.
+
 ## Architecture
 
 ```
