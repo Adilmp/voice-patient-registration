@@ -123,13 +123,45 @@ TOOL_HANDLERS = {
 }
 
 
+def _parse_tool_call(call: dict):
+    """Extract (call_id, name, args) from one toolCallList entry.
+
+    Vapi's actual wire shape nests name/arguments under a "function" key
+    (mirroring the underlying LLM provider's native tool-call format, e.g.
+    OpenAI), with arguments sometimes JSON-encoded as a string rather than
+    a parsed object. Handle that shape as well as a flatter one defensively,
+    since guessing wrong here silently breaks every tool call with an
+    "Unknown tool: None" error that never reaches any real logic below.
+    """
+    call_id = call.get("id") or call.get("toolCallId")
+    fn = call.get("function")
+
+    if isinstance(fn, dict):
+        name = fn.get("name")
+        raw_args = fn.get("arguments")
+    else:
+        name = call.get("name")
+        raw_args = call.get("arguments")
+
+    if isinstance(raw_args, str):
+        try:
+            args = json.loads(raw_args) if raw_args.strip() else {}
+        except json.JSONDecodeError:
+            logger.warning("Could not parse tool arguments as JSON: %r", raw_args)
+            args = {}
+    elif isinstance(raw_args, dict):
+        args = raw_args
+    else:
+        args = {}
+
+    return call_id, name, args
+
+
 def _handle_tool_calls(db: Session, message: dict) -> dict:
     tool_calls = message.get("toolCallList", [])
     results = []
     for call in tool_calls:
-        call_id = call.get("id")
-        name = call.get("name")
-        args = call.get("arguments") or {}
+        call_id, name, args = _parse_tool_call(call)
 
         handler = TOOL_HANDLERS.get(name)
         if handler is None:

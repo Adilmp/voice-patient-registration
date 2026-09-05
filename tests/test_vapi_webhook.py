@@ -1,3 +1,5 @@
+import json
+
 from tests.conftest import VALID_PATIENT
 
 
@@ -6,6 +8,24 @@ def _tool_call(name, call_id, arguments):
         "message": {
             "type": "tool-calls",
             "toolCallList": [{"id": call_id, "name": name, "arguments": arguments}],
+        }
+    }
+
+
+def _openai_style_tool_call(name, call_id, arguments):
+    """Vapi's real wire shape: name/arguments nested under "function", with
+    arguments JSON-encoded as a string (mirrors the underlying LLM
+    provider's native tool-call format)."""
+    return {
+        "message": {
+            "type": "tool-calls",
+            "toolCallList": [
+                {
+                    "id": call_id,
+                    "type": "function",
+                    "function": {"name": name, "arguments": json.dumps(arguments)},
+                }
+            ],
         }
     }
 
@@ -174,3 +194,35 @@ def test_unhandled_message_type_is_ignored_not_errored(client):
     resp = client.post("/vapi/webhook", json={"message": {"type": "status-update"}})
     assert resp.status_code == 200
     assert resp.json() == {"ignored": "status-update"}
+
+
+def test_openai_style_nested_function_shape_is_parsed(client):
+    """Regression: this is Vapi's actual real-world payload shape (name and
+    JSON-string-encoded arguments nested under "function") -- the flat shape
+    in test_lookup_not_found etc. is a fallback, not what production sends.
+    Getting this wrong silently breaks every real call with
+    'Unknown tool: None' while the flat-shape tests keep passing."""
+    resp = client.post(
+        "/vapi/webhook",
+        json=_openai_style_tool_call("register_patient", "call_abc", VALID_PATIENT),
+    )
+    result = _result_of(resp)
+    assert result["toolCallId"] == "call_abc"
+    assert result["result"]["success"] is True
+    assert result["result"]["patient"]["last_name"] == "Nguyen"
+
+
+def test_openai_style_empty_arguments_string(client):
+    resp = client.post(
+        "/vapi/webhook",
+        json={
+            "message": {
+                "type": "tool-calls",
+                "toolCallList": [
+                    {"id": "call_empty", "type": "function", "function": {"name": "lookup_patient_by_phone", "arguments": ""}}
+                ],
+            }
+        },
+    )
+    result = _result_of(resp)["result"]
+    assert result["found"] is False  # empty args -> phone_number="" -> not found, no crash
