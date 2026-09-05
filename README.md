@@ -102,10 +102,11 @@ Bonus: `GET /patients/:id/transcripts` -- call transcripts linked to a patient (
 `POST /vapi/webhook` is a single endpoint that handles every server message
 Vapi sends for this assistant, branching on `message.type`:
 
-- **`tool-calls`** -- the assistant invoking one of three tools:
+- **`tool-calls`** -- the assistant invoking one of four tools:
   - `lookup_patient_by_phone` -- checks for a returning caller by phone number
   - `register_patient` -- creates a new patient (after the agent reads back and confirms all fields)
   - `update_patient` -- updates an existing patient by `patient_id`
+  - `schedule_appointment` (bonus) -- mock appointment booking (no real calendar), offered once after a successful save
 - **`end-of-call-report`** (bonus) -- fired once when the call ends. We extract the transcript and try to match it to a patient by phone number, storing it either way (unmatched calls are kept with `patient_id = null` rather than dropped). Field extraction is defensive/best-effort since Vapi's payload shape has shifted across versions -- the full raw payload is always kept as a fallback so nothing is silently lost.
 - Anything else (`status-update`, etc.) is acknowledged and ignored.
 
@@ -170,20 +171,23 @@ is nothing telephony-related to hardcode or leak here.
 - **SQLite is for local development only.** The deployed instance should use Render's free managed Postgres (see Deployment) since local disk on Render's free web services isn't guaranteed to survive a redeploy -- and losing data between calls would fail this challenge's core "second call, no data loss" requirement.
 - **No authentication on the REST API** -- anyone with the URL can read/write patient records. Acceptable for a fake-data technical assessment; would need API keys or OAuth in production.
 - **No rate limiting** on the API or the webhook.
-- **Multi-language support and appointment scheduling are not implemented** -- listed as bonus/stretch items in the challenge and out of scope for the core 3-hour build.
 - **End-of-call transcript parsing is best-effort** -- Vapi's exact payload shape has shifted across versions, so field extraction (phone number, transcript) uses defensive lookups. The full raw payload is always stored too, so a mismatch loses convenience, not data.
 - **Render free-tier cold starts** can add latency to the very first tool call after idle time; mitigated optionally via UptimeRobot, not solved outright.
+- **Multi-language is prompt-level only.** The system prompt instructs the LLM to switch to Spanish on request, but actually *hearing* and *speaking* Spanish well also requires enabling a multilingual transcriber/voice in the Vapi dashboard -- that dashboard configuration is outside this repo.
+- **Appointment scheduling is mocked** -- `schedule_appointment` always offers the next weekday at a fixed time/provider; there's no real calendar or availability system behind it, as the challenge explicitly allows.
 
 ## Bonus features implemented
 
-- **Automated tests** -- `tests/` (pytest): full REST API lifecycle, validation failures, soft delete, filters, and the Vapi webhook (all 3 tools + end-of-call report), each test isolated on its own temp SQLite file. Run with `pytest -q` (after `pip install -r requirements-dev.txt`).
+- **Automated tests** -- `tests/` (pytest): full REST API lifecycle, validation failures, soft delete, filters, and the Vapi webhook (all 4 tools + end-of-call report), each test isolated on its own temp SQLite file. Run with `pytest -q` (after `pip install -r requirements-dev.txt`).
 - **Dashboard** -- `GET /dashboard`: a dependency-free HTML/JS page listing patients from the live API, with last-name filtering and soft-delete.
 - **Call transcripts** -- see Voice agent integration above and `GET /patients/:id/transcripts`.
 - **Duplicate detection** -- `register_patient` refuses a second record for the same phone number and hands back the existing patient, independent of whether the agent remembered to call `lookup_patient_by_phone` first.
+- **Mock appointment scheduling** -- `schedule_appointment` tool, offered once after a successful registration/update (see Known Limitations for scope).
+- **Multi-language instruction** -- see Known Limitations for what's prompt-level vs. dashboard-level.
 
 ## Next steps (if continuing past the time limit)
 
 - Add basic API-key auth in front of `/patients`.
-- Multi-language support by detecting caller language in the system prompt and switching Vapi's voice/transcriber language.
-- Mock appointment-scheduling tool as a 4th Vapi function.
-- Surface transcripts in the dashboard UI (currently API-only).
+- Enable a multilingual transcriber/voice in Vapi so Spanish actually sounds native, not just LLM-translated text through an English voice.
+- Replace mock appointment slots with a real availability/calendar backend.
+- Surface transcripts and appointments in the dashboard UI (currently API-only).

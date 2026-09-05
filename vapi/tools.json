@@ -89,6 +89,23 @@
       "server": {
         "url": "BASE_URL/vapi/webhook"
       }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "schedule_appointment",
+        "description": "Bonus feature: offer to schedule the patient's first appointment using mock availability data (no real calendar integration). Only call this after registration or an update has already succeeded, and only if the caller says yes when asked.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "patient_id": { "type": "string", "description": "The patient's unique ID, from register_patient or update_patient" }
+          },
+          "required": ["patient_id"]
+        }
+      },
+      "server": {
+        "url": "BASE_URL/vapi/webhook"
+      }
     }
   ]
 }

@@ -11,6 +11,7 @@ how to read, write, or validate a patient record.
 import json
 import logging
 import re
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import ValidationError
@@ -75,10 +76,42 @@ def _update_patient(db: Session, args: dict) -> dict:
     return {"success": True, "patient": payload}
 
 
+def _next_available_slot() -> str:
+    """Bonus: mock appointment scheduling -- no real calendar integration.
+
+    Always offers the next weekday at a fixed time. Good enough to
+    demonstrate the flow; a real system would query provider availability.
+    """
+    d = date.today() + timedelta(days=1)
+    while d.weekday() >= 5:  # Saturday=5, Sunday=6
+        d += timedelta(days=1)
+    return d.strftime("%A, %B %d, %Y") + " at 10:00 AM"
+
+
+def _schedule_appointment(db: Session, args: dict) -> dict:
+    patient_id = args.get("patient_id")
+    if not patient_id:
+        return {"success": False, "error": "patient_id is required to schedule an appointment"}
+
+    patient = crud.get_patient(db, patient_id)
+    if patient is None:
+        return {"success": False, "error": "No patient found with that patient_id"}
+
+    appointment = {
+        "patient_id": patient_id,
+        "date_time": _next_available_slot(),
+        "provider": "Dr. Patel",
+        "location": "Main Street Clinic",
+    }
+    logger.info("VAPI_APPOINTMENT_SCHEDULED %s", appointment)
+    return {"success": True, "appointment": appointment}
+
+
 TOOL_HANDLERS = {
     "lookup_patient_by_phone": _lookup_patient_by_phone,
     "register_patient": _register_patient,
     "update_patient": _update_patient,
+    "schedule_appointment": _schedule_appointment,
 }
 
 

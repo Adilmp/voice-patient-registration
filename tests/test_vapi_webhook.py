@@ -72,6 +72,30 @@ def test_update_patient_via_webhook(client):
     assert result["patient"]["city"] == "Manhattan"
 
 
+def test_schedule_appointment_for_existing_patient(client):
+    reg = client.post("/vapi/webhook", json=_tool_call("register_patient", "c12", VALID_PATIENT))
+    patient_id = _result_of(reg)["result"]["patient"]["patient_id"]
+
+    resp = client.post(
+        "/vapi/webhook",
+        json=_tool_call("schedule_appointment", "c13", {"patient_id": patient_id}),
+    )
+    result = _result_of(resp)["result"]
+    assert result["success"] is True
+    assert result["appointment"]["patient_id"] == patient_id
+    assert result["appointment"]["date_time"]
+    assert result["appointment"]["provider"]
+
+
+def test_schedule_appointment_unknown_patient_returns_error(client):
+    resp = client.post(
+        "/vapi/webhook",
+        json=_tool_call("schedule_appointment", "c14", {"patient_id": "nope"}),
+    )
+    result = _result_of(resp)["result"]
+    assert result["success"] is False
+
+
 def test_update_patient_missing_id_returns_error(client):
     resp = client.post(
         "/vapi/webhook",
