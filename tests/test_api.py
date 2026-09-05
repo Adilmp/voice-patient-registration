@@ -48,6 +48,15 @@ def test_create_patient_invalid_state_rejected(client):
     assert resp.status_code == 422
 
 
+def test_create_patient_sex_case_insensitive(client):
+    """Regression: an LLM saying "decline to answer" instead of the exact
+    canonical "Decline to Answer" must not fail validation."""
+    patient = {**VALID_PATIENT, "sex": "decline to answer", "phone_number": "2125550160"}
+    resp = client.post("/patients", json=patient)
+    assert resp.status_code == 201
+    assert resp.json()["data"]["sex"] == "Decline to Answer"  # normalized to canonical casing
+
+
 def test_get_patient_by_id(client):
     created = client.post("/patients", json=VALID_PATIENT).json()["data"]
     resp = client.get(f"/patients/{created['patient_id']}")

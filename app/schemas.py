@@ -43,9 +43,11 @@ def validate_dob(value: date) -> date:
 
 
 def validate_sex(value: str) -> str:
-    if value not in SEX_VALUES:
-        raise ValueError(f"sex must be one of {SEX_VALUES}")
-    return value
+    normalized = value.strip().lower()
+    for canonical in SEX_VALUES:
+        if canonical.lower() == normalized:
+            return canonical
+    raise ValueError(f"sex must be one of {SEX_VALUES}")
 
 
 def validate_city(value: str) -> str:
